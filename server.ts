@@ -9,55 +9,67 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// الربط المباشر بـ Turso باستخدام متغيرات البيئة
+// ملاحظة: القيم الحقيقية موجودة الآن في Netlify تحت الأسماء التالية
 const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:database.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: process.env.TURSO_DATABASE_URL as string,
+  authToken: process.env.TURSO_AUTH_TOKEN as string,
 });
 
-// Initialize Database
-async function initDb() {
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS departments (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL
-    );
-  `);
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS workers (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      departmentId TEXT,
-      status TEXT,
-      password TEXT
-    );
-  `);
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS items (
-      serialNumber TEXT PRIMARY KEY,
-      status TEXT NOT NULL,
-      workerId TEXT,
-      deliveryDate TEXT,
-      installationDate TEXT,
-      meterNumber TEXT,
-      operationType TEXT,
-      notes TEXT
-    );
-  `);
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS logs (
-      id TEXT PRIMARY KEY,
-      serialNumber TEXT NOT NULL,
-      workerId TEXT NOT NULL,
-      status TEXT NOT NULL,
-      timestamp TEXT NOT NULL,
-      meterNumber TEXT,
-      operationType TEXT,
-      notes TEXT
-    );
-  `);
+// فحص أولي للاتصال لضمان عدم وجود قيم فارغة
+if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
+  console.warn("⚠️ Warning: Turso credentials are not set in environment variables!");
 }
 
-initDb().catch(console.error);
+// Initialize Database (Cloud)
+async function initDb() {
+  try {
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS departments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS workers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        departmentId TEXT,
+        status TEXT,
+        password TEXT
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS items (
+        serialNumber TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        workerId TEXT,
+        deliveryDate TEXT,
+        installationDate TEXT,
+        meterNumber TEXT,
+        operationType TEXT,
+        notes TEXT
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS logs (
+        id TEXT PRIMARY KEY,
+        serialNumber TEXT NOT NULL,
+        workerId TEXT NOT NULL,
+        status TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        meterNumber TEXT,
+        operationType TEXT,
+        notes TEXT
+      );
+    `);
+    console.log("✅ Turso Database tables initialized or already exist.");
+  } catch (err) {
+    console.error("❌ Failed to initialize Turso DB:", err);
+  }
+}
+
+initDb();
 
 const app = express();
 app.use(express.json());
@@ -77,7 +89,7 @@ app.get('/api/data', async (req, res) => {
       logs: logs.rows 
     });
   } catch (error) {
-    console.error('Error fetching data:', error);
+    console.error('Error fetching data from Turso:', error);
     res.status(500).json({ error: 'Failed to fetch data' });
   }
 });
@@ -124,7 +136,7 @@ app.post('/api/sync', async (req, res) => {
     await db.batch(batch, "write");
     res.json({ success: true });
   } catch (error) {
-    console.error('Error syncing data:', error);
+    console.error('Error syncing to Turso:', error);
     res.status(500).json({ error: 'Failed to sync data' });
   }
 });
@@ -140,8 +152,9 @@ async function startServer() {
     app.use(express.static('dist'));
   }
 
-  app.listen(3000, '0.0.0.0', () => {
-    console.log('Server running on http://localhost:3000');
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
   });
 }
 
